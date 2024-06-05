@@ -3,8 +3,9 @@ import bodyParser from "body-parser"
 import cors from "cors"
 import bcrypt from "bcrypt"
 import { PrismaClient } from "@prisma/client"
-import jwt from "jsonwebtoken"
+import jwt, { JwtPayload }from "jsonwebtoken"
 import dotenv from "dotenv"
+import {Request, Response, NextFunction} from "express"
 dotenv.config()
 
 
@@ -20,7 +21,7 @@ app.use(cors())
 
 // Route handlers
 
-app.post('/register', async (req, res) => {
+app.post('/register', async (req: Request, res: Response) => {
 
     const {email, password} = req.body;
 
@@ -56,7 +57,7 @@ app.post('/register', async (req, res) => {
     }
 })
 
-app.post("/login", async (req, res) => {
+app.post("/login", async (req: Request, res: Response) => {
 
     const { email, password } = req.body;
 
@@ -86,7 +87,7 @@ app.post("/login", async (req, res) => {
 
         // Användaren är betrodd. email finns i db och matchar lösenordet
         // Skapa vårt token med vårt hemliga ord (JWT_SECRET)
-        const token = jwt.sign({id: user.id}, process.env.JWT_SECRET!, { expiresIn: '1h'})
+        const token = jwt.sign({id: user.id}, process.env.JWT_SECRET, { expiresIn: '1h'})
 
         res.status(200).json({message: `Token created ${token}`})
 
@@ -99,7 +100,41 @@ app.post("/login", async (req, res) => {
 })
 
 
-// Middleware
+interface AuthenticatedRequest extends Request {
+    user?: JwtPayload;
+  }
+
+// Middleware för att verifiera att användaren är betrodd
+const auth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+
+    const token = req.headers.authorization?.split(' ')[1]
+
+    if(!token) {
+        return res.status(401).send("Acess denied")
+    }
+
+    if(!process.env.JWT_SECRET) {
+        return res.status(500).json({error: "internal server error"})
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET) as jwt.JwtPayload
+        req.user = decoded;
+        next()
+
+    } catch(error) {
+        console.error(error);
+        res.status(400).send("Invalid token")
+    }
+
+
+}
+
+
+// En protected route
+app.get("/protected", auth ,(req, res) => {
+    res.send("The user it authenticated and can access this route")
+})
 
 
 app.listen(PORT, () => {
